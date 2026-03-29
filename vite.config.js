@@ -1,24 +1,19 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig({
-  plugins: [
-    react(),
-    VitePWA({
-      registerType: 'autoUpdate',
-      manifest: {
-        name: 'Jeanie Daycare',
-        short_name: 'Jeanie',
-        description: 'Daycare coordination for Jeanie',
-        theme_color: '#4CAF50',
-        background_color: '#ffffff',
-        display: 'standalone',
-        icons: [
-          { src: '/icon-192.png', sizes: '192x192', type: 'image/png' },
-          { src: '/icon-512.png', sizes: '512x512', type: 'image/png' }
-        ]
-      }
-    })
-  ]
+  plugins: [react()]
 });
+```
+
+Press **Ctrl + S** to save.
+
+Then push the changes:
+```
+git add .
+```
+```
+git commit -m "remove vite-plugin-pwa"
+```
+```
+git push
