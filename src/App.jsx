@@ -10,12 +10,15 @@ const USERS = ['Mum', 'Dad'];
 
 function getNextDays(n = 14) {
   const days = [];
-  const d = new Date();
+  const d = getNZTime();
   for (let i = 0; i < n; i++) {
     const date = new Date(d);
     date.setDate(d.getDate() + i);
     if (date.getDay() !== 0 && date.getDay() !== 6) {
-      days.push(date.toISOString().split('T')[0]);
+      const dateStr = date.toISOString().split('T')[0];
+      if (!isDayLocked(dateStr)) {
+        days.push(dateStr);
+      }
     }
   }
   return days;
