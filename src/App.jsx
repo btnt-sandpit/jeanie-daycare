@@ -60,7 +60,11 @@ export default function App() {
   const [notes, setNotes] = useState({});
   const [newNote, setNewNote] = useState('');
   const [noteAuthor, setNoteAuthor] = useState('Mum');
-  const [selectedDay, setSelectedDay] = useState(null);
+  const [selectedDay, setSelectedDay] = useState(() => {
+    const nzNow = getNZTime();
+    const today = nzNow.toISOString().split('T')[0];
+    return today;
+  });
   const [alerts, setAlerts] = useState([]);
   const [seenNotes, setSeenNotes] = useState(() => {
     try { return JSON.parse(localStorage.getItem('seenNotes') || '{}'); } catch { return {}; }
