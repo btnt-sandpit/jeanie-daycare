@@ -66,7 +66,7 @@ export default function App() {
     try { return JSON.parse(localStorage.getItem('seenNotes') || '{}'); } catch { return {}; }
   });
   const days = getNextDays(14);
-  const prevNotesRef = useRef({});
+  const touchStartY = useRef(0);
 
   // Real-time sync for events
   useEffect(() => {
@@ -215,8 +215,23 @@ export default function App() {
     markNotesSeen(date);
   };
 
+  const handleTouchStart = (e) => {
+    touchStartY.current = e.touches[0].clientY;
+  };
+
+  const handleTouchEnd = (e) => {
+    const diff = e.changedTouches[0].clientY - touchStartY.current;
+    if (diff > 80 && window.scrollY === 0) {
+      window.location.reload();
+    }
+  };
+
   return (
-    <div className="app">
+    <div
+      className="app"
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
+    >
       <header>
         <h1>🌟 Jeanie's Daycare</h1>
       </header>
