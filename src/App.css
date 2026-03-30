@@ -32,7 +32,7 @@ header h1 { font-size: 22px; }
 .assignments { display: flex; flex-direction: column; gap: 8px; }
 .assignment-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 14px; }
 .time-row { display: flex; align-items: center; gap: 10px; font-size: 13px; color: #666; padding-left: 4px; }
-.time-input { border: 1px solid #ddd; border-radius: 8px; padding: 4px 8px; font-size: 13px; color: #333; }
+.time-input { border: 1px solid #ddd; border-radius: 8px; padding: 4px 8px; font-size: 13px; color: #333; background-color: #ffffff; -webkit-text-fill-color: #333; color-scheme: light; }
 .person-buttons { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
 .person-buttons button { padding: 6px 16px; border-radius: 20px; border: 2px solid #ddd; background: white; cursor: pointer; font-size: 13px; }
 .person-buttons button.selected { background: #4CAF50; color: white; border-color: #4CAF50; }
