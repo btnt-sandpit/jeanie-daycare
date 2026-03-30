@@ -26,11 +26,29 @@ function formatDate(date) {
   return d.toLocaleDateString('en-NZ', { weekday: 'short', day: 'numeric', month: 'short' });
 }
 
+function getNZTime() {
+  return new Date(new Date().toLocaleString('en-US', { timeZone: 'Pacific/Auckland' }));
+}
+
 function getDaysUntil(dateStr) {
-  const today = new Date();
+  const today = getNZTime();
   today.setHours(0, 0, 0, 0);
   const target = new Date(dateStr + 'T00:00:00');
   return Math.round((target - today) / (1000 * 60 * 60 * 24));
+}
+
+function isDropoffLocked(dateStr) {
+  const nzNow = getNZTime();
+  const daysUntil = getDaysUntil(dateStr);
+  // Lock dropoff if it's today and past midday NZ time
+  return daysUntil === 0 && nzNow.getHours() >= 12;
+}
+
+function isDayLocked(dateStr) {
+  const nzNow = getNZTime();
+  const daysUntil = getDaysUntil(dateStr);
+  // Lock entire day if it's today and past 6pm NZ time, or if it's in the past
+  return daysUntil < 0 || (daysUntil === 0 && nzNow.getHours() >= 18);
 }
 
 export default function App() {
@@ -94,11 +112,12 @@ export default function App() {
     let workingDaysCount = 0;
     for (const date of days) {
       if (workingDaysCount > 2) break;
+      if (isDayLocked(date)) continue;
       const event = events[date] || {};
       if (!event.dayOff) {
         workingDaysCount++;
         if (workingDaysCount <= 2) {
-          if (!event.dropoff) urgent.push(`⚠️ ${formatDate(date)}: Drop-off not assigned!`);
+          if (!isDropoffLocked(date) && !event.dropoff) urgent.push(`⚠️ ${formatDate(date)}: Drop-off not assigned!`);
           if (!event.pickup) urgent.push(`⚠️ ${formatDate(date)}: Pick-up not assigned!`);
         }
       }
@@ -219,7 +238,9 @@ export default function App() {
             const dayOff = event.dayOff || false;
             const holidayType = event.holidayType || 'none';
             const daysUntil = getDaysUntil(date);
-            const isUrgent = daysUntil <= 2 && !dayOff;
+            const locked = isDayLocked(date);
+            const dropoffLocked = isDropoffLocked(date);
+            const isUrgent = !locked && daysUntil <= 2 && !dayOff;
             const prevTimes = getPreviousTimes(date);
             const dropoffTime = event.dropoffTime || prevTimes.dropoffTime;
             const pickupTime = event.pickupTime || prevTimes.pickupTime;
@@ -227,8 +248,7 @@ export default function App() {
             const unseen = hasUnseenNotes(date);
 
             return (
-              <div key={date} className={`day-card ${dayOff ? 'day-off' : ''} ${isUrgent ? 'urgent' : ''}`}>
-                <div className="day-header">
+<div key={date} className={`day-card ${dayOff ? 'day-off' : ''} ${isUrgent ? 'urgent' : ''} ${locked ? 'locked' : ''}`}>                <div className="day-header">
                   <div className="day-header-left">
                     <span className="day-label">{formatDate(date)}</span>
                     {daysUntil === 0 && <span className="badge today">Today</span>}
@@ -254,12 +274,16 @@ export default function App() {
                   <div className="assignments">
                     <div className="assignment-row">
                       <span>🌅 Drop-off:</span>
-                      <div className="person-buttons">
-                        {USERS.map(u => (
-                          <button key={u} className={event.dropoff === u ? 'selected' : ''} onClick={() => assignDropoff(date, u)}>{u}</button>
-                        ))}
-                        {!event.dropoff && <span className="warning">⚠️ Unassigned</span>}
-                      </div>
+                      {dropoffLocked ? (
+                        <span className="locked-label">Past midday — locked</span>
+                      ) : (
+                        <div className="person-buttons">
+                          {USERS.map(u => (
+                            <button key={u} className={event.dropoff === u ? 'selected' : ''} onClick={() => assignDropoff(date, u)}>{u}</button>
+                          ))}
+                          {!event.dropoff && <span className="warning">⚠️ Unassigned</span>}
+                        </div>
+                      )}
                     </div>
                     <div className="time-row">
                       <span>🕐 Time:</span>
