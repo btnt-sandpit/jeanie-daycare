@@ -125,12 +125,10 @@ export default function App() {
         }
       }
     }
-    if (urgent.length > 0) {
-      setAlerts(prev => {
-        const existing = prev.filter(a => !a.startsWith('⚠️'));
-        return [...existing, ...urgent];
-      });
-    }
+        setAlerts(prev => {
+      const existing = prev.filter(a => !a.startsWith('⚠️'));
+      return [...existing, ...urgent];
+    });
   }, [events]);
 
   const dismissAlert = (index) => {
