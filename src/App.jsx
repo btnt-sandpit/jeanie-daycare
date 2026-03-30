@@ -65,6 +65,12 @@ export default function App() {
   const [seenNotes, setSeenNotes] = useState(() => {
     try { return JSON.parse(localStorage.getItem('seenNotes') || '{}'); } catch { return {}; }
   });
+  const [currentUser, setCurrentUser] = useState(() => {
+    return localStorage.getItem('currentUser') || null;
+  });
+  const [showUserSelect, setShowUserSelect] = useState(() => {
+    return !localStorage.getItem('currentUser');
+  });
   const days = getNextDays(14);
   const touchStartY = useRef(0);
 
@@ -88,13 +94,14 @@ export default function App() {
         data[note.date].push(note);
       });
 
-      // Check for new notes vs what we've seen before
+      // Check for new notes from the OTHER person
       const newAlerts = [];
       Object.entries(data).forEach(([date, dateNotes]) => {
         dateNotes.forEach(note => {
           const prev = prevNotesRef.current[date];
           const wasntThere = !prev || !prev.find(n => n.id === note.id);
-          if (wasntThere && prevNotesRef.current[date] !== undefined) {
+          const fromOther = currentUser ? note.author !== currentUser : true;
+          if (wasntThere && prevNotesRef.current[date] !== undefined && fromOther) {
             newAlerts.push(`📝 New note from ${note.author} for ${formatDate(date)}: "${note.text.substring(0, 40)}${note.text.length > 40 ? '...' : ''}"`);
           }
         });
@@ -185,15 +192,26 @@ export default function App() {
     if (!newNote.trim() || !selectedDay) return;
     await addDoc(collection(db, 'notes'), {
       text: newNote,
-      author: noteAuthor,
+      author: currentUser || noteAuthor,
       date: selectedDay,
       createdAt: serverTimestamp()
     });
     setNewNote('');
-    // Mark as seen for sender
     const updated = { ...seenNotes, [selectedDay]: (notes[selectedDay]?.length || 0) + 1 };
     setSeenNotes(updated);
     localStorage.setItem('seenNotes', JSON.stringify(updated));
+  };
+
+  const selectUser = (user) => {
+    setCurrentUser(user);
+    setShowUserSelect(false);
+    localStorage.setItem('currentUser', user);
+  };
+
+  const switchUser = () => {
+    localStorage.removeItem('currentUser');
+    setCurrentUser(null);
+    setShowUserSelect(true);
   };
 
   const markNotesSeen = (date) => {
@@ -204,9 +222,9 @@ export default function App() {
   };
 
   const hasUnseenNotes = (date) => {
-    const total = notes[date]?.length || 0;
-    const seen = seenNotes[date] || 0;
-    return total > seen;
+    const otherNotes = (notes[date] || []).filter(n => n.author !== currentUser);
+    const seenCount = seenNotes[date] || 0;
+    return otherNotes.length > seenCount;
   };
 
   const openNotes = (date) => {
@@ -226,6 +244,23 @@ export default function App() {
     }
   };
 
+  if (showUserSelect) {
+    return (
+      <div className="user-select-screen">
+        <div className="user-select-card">
+          <div className="user-select-icon">🌟</div>
+          <h1>Jeanie's Daycare</h1>
+          <p>Who are you?</p>
+          <div className="user-select-buttons">
+            {USERS.map(u => (
+              <button key={u} onClick={() => selectUser(u)}>{u}</button>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       className="app"
@@ -233,7 +268,12 @@ export default function App() {
       onTouchEnd={handleTouchEnd}
     >
       <header>
-        <h1>🌟 Jeanie's Daycare</h1>
+        <div className="header-top">
+          <h1>🌟 Jeanie's Daycare</h1>
+          <button className="switch-user-btn" onClick={switchUser}>
+            {currentUser} ⇄
+          </button>
+        </div>
       </header>
 
       {/* Alert Banner */}
@@ -379,9 +419,7 @@ export default function App() {
           </div>
 
           <div className="note-input">
-            <select value={noteAuthor} onChange={e => setNoteAuthor(e.target.value)}>
-              {USERS.map(u => <option key={u}>{u}</option>)}
-            </select>
+            <div className="note-from">Sending as: <strong>{currentUser}</strong></div>
             <textarea value={newNote} onChange={e => setNewNote(e.target.value)} placeholder={`Leave a note for ${formatDate(selectedDay || days[0])}...`} rows={3} />
             <button onClick={sendNote}>Send Note 📨</button>
           </div>
