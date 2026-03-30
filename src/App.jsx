@@ -162,11 +162,19 @@ export default function App() {
   };
 
   const assignPickup = async (date, person) => {
-    await setDoc(doc(db, 'events', date), { pickup: person }, { merge: true });
+    const current = events[date]?.pickup;
+    const newValue = current === person ? null : person;
+    const update = { pickup: newValue };
+    if (newValue && !events[date]?.pickupTime) update.pickupTime = '16:00';
+    await setDoc(doc(db, 'events', date), update, { merge: true });
   };
 
   const assignDropoff = async (date, person) => {
-    await setDoc(doc(db, 'events', date), { dropoff: person }, { merge: true });
+    const current = events[date]?.dropoff;
+    const newValue = current === person ? null : person;
+    const update = { dropoff: newValue };
+    if (newValue && !events[date]?.dropoffTime) update.dropoffTime = '07:30';
+    await setDoc(doc(db, 'events', date), update, { merge: true });
   };
 
   const updateTime = async (date, field, value) => {
@@ -243,8 +251,8 @@ export default function App() {
             const dropoffLocked = isDropoffLocked(date);
             const isUrgent = !locked && daysUntil <= 2 && !dayOff;
             const prevTimes = getPreviousTimes(date);
-            const dropoffTime = event.dropoffTime || prevTimes.dropoffTime;
-            const pickupTime = event.pickupTime || prevTimes.pickupTime;
+            const dropoffTime = event.dropoffTime || '';
+            const pickupTime = event.pickupTime || '';
             const noteCount = notes[date]?.length || 0;
             const unseen = hasUnseenNotes(date);
 
