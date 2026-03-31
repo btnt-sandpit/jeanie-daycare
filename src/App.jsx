@@ -2,11 +2,15 @@ import { useState, useEffect, useRef } from 'react';
 import { db } from './firebaseConfig';
 import {
   collection, doc, setDoc, addDoc,
-  onSnapshot, serverTimestamp, query, orderBy, where
+  onSnapshot, serverTimestamp, query, orderBy
 } from 'firebase/firestore';
 import './App.css';
 
 const USERS = ['Mum', 'Dad'];
+
+function getNZTime() {
+  return new Date(new Date().toLocaleString('en-US', { timeZone: 'Pacific/Auckland' }));
+}
 
 function getNextDays(n = 14) {
   const days = [];
@@ -25,12 +29,9 @@ function getNextDays(n = 14) {
 }
 
 function formatDate(date) {
+  if (!date) return '';
   const d = new Date(date + 'T12:00:00');
   return d.toLocaleDateString('en-NZ', { weekday: 'short', day: 'numeric', month: 'short' });
-}
-
-function getNZTime() {
-  return new Date(new Date().toLocaleString('en-US', { timeZone: 'Pacific/Auckland' }));
 }
 
 function getDaysUntil(dateStr) {
@@ -43,14 +44,12 @@ function getDaysUntil(dateStr) {
 function isDropoffLocked(dateStr) {
   const nzNow = getNZTime();
   const daysUntil = getDaysUntil(dateStr);
-  // Lock dropoff if it's today and past midday NZ time
   return daysUntil === 0 && nzNow.getHours() >= 12;
 }
 
 function isDayLocked(dateStr) {
   const nzNow = getNZTime();
   const daysUntil = getDaysUntil(dateStr);
-  // Lock entire day if it's today and past 6pm NZ time, or if it's in the past
   return daysUntil < 0 || (daysUntil === 0 && nzNow.getHours() >= 18);
 }
 
@@ -59,23 +58,21 @@ export default function App() {
   const [events, setEvents] = useState({});
   const [notes, setNotes] = useState({});
   const [newNote, setNewNote] = useState('');
-  const [noteAuthor, setNoteAuthor] = useState('Mum');
-  const [selectedDay, setSelectedDay] = useState(() => {
-    const nzNow = getNZTime();
-    const today = nzNow.toISOString().split('T')[0];
-    return today;
-  });
+  const [selectedDay, setSelectedDay] = useState(null);
   const [alerts, setAlerts] = useState([]);
-  const [seenNotes, setSeenNotes] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('seenNotes') || '{}'); } catch { return {}; }
-  });
   const [currentUser, setCurrentUser] = useState(() => {
     return localStorage.getItem('currentUser') || null;
   });
   const [showUserSelect, setShowUserSelect] = useState(() => {
     return !localStorage.getItem('currentUser');
   });
+  const [seenNotes, setSeenNotes] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('seenNotes') || '{}'); } catch { return {}; }
+  });
+
   const days = getNextDays(14);
+  const effectiveSelectedDay = selectedDay || days[0];
+  const prevNotesRef = useRef({});
   const touchStartY = useRef(0);
 
   // Real-time sync for events
@@ -87,7 +84,7 @@ export default function App() {
     });
   }, []);
 
-  // Real-time sync for notes (grouped by date)
+  // Real-time sync for notes grouped by date
   useEffect(() => {
     const q = query(collection(db, 'notes'), orderBy('createdAt', 'asc'));
     return onSnapshot(q, snap => {
@@ -98,7 +95,7 @@ export default function App() {
         data[note.date].push(note);
       });
 
-      // Check for new notes from the OTHER person
+      // Alert for new notes from the other person
       const newAlerts = [];
       Object.entries(data).forEach(([date, dateNotes]) => {
         dateNotes.forEach(note => {
@@ -118,25 +115,23 @@ export default function App() {
       prevNotesRef.current = data;
       setNotes(data);
     });
-  }, []);
+  }, [currentUser]);
 
-  // Check for unassigned days within 2 WORKING days
+  // Alerts for unassigned days within 2 working days
   useEffect(() => {
     const urgent = [];
     let workingDaysCount = 0;
     for (const date of days) {
-      if (workingDaysCount > 2) break;
+      if (workingDaysCount >= 2) break;
       if (isDayLocked(date)) continue;
       const event = events[date] || {};
       if (!event.dayOff) {
         workingDaysCount++;
-        if (workingDaysCount <= 2) {
-          if (!isDropoffLocked(date) && !event.dropoff) urgent.push(`⚠️ ${formatDate(date)}: Drop-off not assigned!`);
-          if (!event.pickup) urgent.push(`⚠️ ${formatDate(date)}: Pick-up not assigned!`);
-        }
+        if (!isDropoffLocked(date) && !event.dropoff) urgent.push(`⚠️ ${formatDate(date)}: Drop-off not assigned!`);
+        if (!event.pickup) urgent.push(`⚠️ ${formatDate(date)}: Pick-up not assigned!`);
       }
     }
-        setAlerts(prev => {
+    setAlerts(prev => {
       const existing = prev.filter(a => !a.startsWith('⚠️'));
       return [...existing, ...urgent];
     });
@@ -146,7 +141,6 @@ export default function App() {
     setAlerts(prev => prev.filter((_, i) => i !== index));
   };
 
-  // Get the most recent previous day's times as defaults
   function getPreviousTimes(currentDate) {
     const idx = days.indexOf(currentDate);
     for (let i = idx - 1; i >= 0; i--) {
@@ -157,11 +151,6 @@ export default function App() {
     }
     return { dropoffTime: '', pickupTime: '' };
   }
-
-  const toggleDayOff = async (date) => {
-    const current = events[date]?.dayOff || false;
-    await setDoc(doc(db, 'events', date), { dayOff: !current }, { merge: true });
-  };
 
   const cycleHoliday = async (date) => {
     const current = events[date]?.holidayType || 'none';
@@ -193,15 +182,15 @@ export default function App() {
   };
 
   const sendNote = async () => {
-    if (!newNote.trim() || !selectedDay) return;
+    if (!newNote.trim() || !effectiveSelectedDay) return;
     await addDoc(collection(db, 'notes'), {
       text: newNote,
-      author: currentUser || noteAuthor,
-      date: selectedDay,
+      author: currentUser || 'Unknown',
+      date: effectiveSelectedDay,
       createdAt: serverTimestamp()
     });
     setNewNote('');
-    const updated = { ...seenNotes, [selectedDay]: (notes[selectedDay]?.length || 0) + 1 };
+    const updated = { ...seenNotes, [effectiveSelectedDay]: (notes[effectiveSelectedDay]?.length || 0) + 1 };
     setSeenNotes(updated);
     localStorage.setItem('seenNotes', JSON.stringify(updated));
   };
@@ -219,8 +208,8 @@ export default function App() {
   };
 
   const markNotesSeen = (date) => {
-    const count = notes[date]?.length || 0;
-    const updated = { ...seenNotes, [date]: count };
+    const otherNotes = (notes[date] || []).filter(n => n.author !== currentUser);
+    const updated = { ...seenNotes, [date]: otherNotes.length };
     setSeenNotes(updated);
     localStorage.setItem('seenNotes', JSON.stringify(updated));
   };
@@ -280,7 +269,6 @@ export default function App() {
         </div>
       </header>
 
-      {/* Alert Banner */}
       {alerts.length > 0 && (
         <div className="alerts">
           {alerts.map((alert, i) => (
@@ -294,8 +282,8 @@ export default function App() {
 
       <nav className="tabs">
         <button className={tab === 'schedule' ? 'active' : ''} onClick={() => setTab('schedule')}>📅 Schedule</button>
-        <button className={tab === 'notes' ? 'active' : ''} onClick={() => { setTab('notes'); if (!selectedDay) setSelectedDay(days[0]); }}>
-          📝 Notes
+        <button className={tab === 'notes' ? 'active' : ''} onClick={() => { setTab('notes'); markNotesSeen(effectiveSelectedDay); }}>
+          📝 Notes {Object.keys(notes).some(d => hasUnseenNotes(d)) ? '🔴' : ''}
         </button>
       </nav>
 
@@ -309,14 +297,14 @@ export default function App() {
             const locked = isDayLocked(date);
             const dropoffLocked = isDropoffLocked(date);
             const isUrgent = !locked && daysUntil <= 2 && !dayOff;
-            const prevTimes = getPreviousTimes(date);
             const dropoffTime = event.dropoffTime || '';
             const pickupTime = event.pickupTime || '';
             const noteCount = notes[date]?.length || 0;
             const unseen = hasUnseenNotes(date);
 
             return (
-<div key={date} className={`day-card ${dayOff ? 'day-off' : ''} ${isUrgent ? 'urgent' : ''} ${locked ? 'locked' : ''}`}>                <div className="day-header">
+              <div key={date} className={`day-card ${dayOff ? 'day-off' : ''} ${isUrgent ? 'urgent' : ''} ${locked ? 'locked' : ''}`}>
+                <div className="day-header">
                   <div className="day-header-left">
                     <span className="day-label">{formatDate(date)}</span>
                     {daysUntil === 0 && <span className="badge today">Today</span>}
@@ -353,15 +341,12 @@ export default function App() {
                         </div>
                       )}
                     </div>
-                    <div className="time-row">
-                      <span>🕐 Time:</span>
-                      <input
-                        type="time"
-                        value={dropoffTime}
-                        onChange={e => updateTime(date, 'dropoffTime', e.target.value)}
-                        className="time-input"
-                      />
-                    </div>
+                    {!dropoffLocked && (
+                      <div className="time-row">
+                        <span>🕐 Time:</span>
+                        <input type="time" value={dropoffTime} onChange={e => updateTime(date, 'dropoffTime', e.target.value)} className="time-input" />
+                      </div>
+                    )}
                     <div className="assignment-row">
                       <span>🌆 Pick-up:</span>
                       <div className="person-buttons">
@@ -373,12 +358,7 @@ export default function App() {
                     </div>
                     <div className="time-row">
                       <span>🕐 Time:</span>
-                      <input
-                        type="time"
-                        value={pickupTime}
-                        onChange={e => updateTime(date, 'pickupTime', e.target.value)}
-                        className="time-input"
-                      />
+                      <input type="time" value={pickupTime} onChange={e => updateTime(date, 'pickupTime', e.target.value)} className="time-input" />
                     </div>
                   </div>
                 )}
@@ -398,7 +378,7 @@ export default function App() {
         <div className="notes">
           <div className="day-selector">
             <label>Notes for:</label>
-            <select value={selectedDay || days[0]} onChange={e => { setSelectedDay(e.target.value); markNotesSeen(e.target.value); }}>
+            <select value={effectiveSelectedDay} onChange={e => { setSelectedDay(e.target.value); markNotesSeen(e.target.value); }}>
               {days.map(date => (
                 <option key={date} value={date}>
                   {formatDate(date)}{hasUnseenNotes(date) ? ' 🔴' : ''}
@@ -408,11 +388,11 @@ export default function App() {
           </div>
 
           <div className="notes-list">
-            {(notes[selectedDay] || []).length === 0 && (
+            {(notes[effectiveSelectedDay] || []).length === 0 && (
               <div className="no-notes">No notes for this day yet</div>
             )}
-            {(notes[selectedDay] || []).map(note => (
-              <div key={note.id} className="note-card">
+            {(notes[effectiveSelectedDay] || []).map(note => (
+              <div key={note.id} className={`note-card ${note.author === currentUser ? 'note-mine' : 'note-theirs'}`}>
                 <div className="note-meta">
                   <strong>{note.author}</strong>
                   <span>{note.createdAt?.toDate?.().toLocaleString('en-NZ') || 'just now'}</span>
@@ -424,7 +404,7 @@ export default function App() {
 
           <div className="note-input">
             <div className="note-from">Sending as: <strong>{currentUser}</strong></div>
-            <textarea value={newNote} onChange={e => setNewNote(e.target.value)} placeholder={`Leave a note for ${formatDate(selectedDay || days[0])}...`} rows={3} />
+            <textarea value={newNote} onChange={e => setNewNote(e.target.value)} placeholder="Type your note here..." rows={3} />
             <button onClick={sendNote}>Send Note 📨</button>
           </div>
         </div>
